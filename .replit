@@ -1,6 +1,30 @@
-modules = ["python-3.12", "bash"]
+modules = ["bash", "python-3.11"]
 [agent]
 expertMode = true
 
 [nix]
 channel = "stable-25_05"
+packages = ["glibcLocales", "libarchive", "unrar"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "CloudBR Terminal"
+
+[[workflows.workflow]]
+name = "CloudBR Terminal"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python terminal.py"
+
+[workflows.workflow.metadata]
+outputType = "console"

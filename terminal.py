@@ -385,11 +385,9 @@ def mostrar_menu_principal():
     print("🎯 MENU PRINCIPAL:")
     print()
     print("1️⃣  Processar arquivos da pasta atual")
-    print("2️⃣  Iniciar painel web (Flask)")
-    print("3️⃣  Iniciar bot do Telegram")
-    print("4️⃣  Ver arquivos na pasta")
-    print("5️⃣  Ajuda e instruções")
-    print("6️⃣  Sair")
+    print("2️⃣  Ver arquivos na pasta")
+    print("3️⃣  Ajuda e instruções")
+    print("4️⃣  Sair")
     print()
     print("=" * 70)
 
@@ -564,35 +562,11 @@ def mostrar_ajuda():
     print("• cloudbr-[nome]-BR-[data].txt - Apenas URLs brasileiras")
     print("• cloudbr-LOTE-[tipo]-[data-hora].txt - Processamento em lote")
     print()
-    print("⚡ OUTRAS VERSÕES:")
-    print("• Painel Web: python app_web.py (porta 5000)")
-    print("• Bot Telegram: python telegram_bot.py")
+    print("⚡ COMO EXECUTAR:")
+    print("• Terminal: python terminal.py")
+    print("• Script Shell: ./iniciar.sh")
     print("=" * 70)
 
-def iniciar_painel_web():
-    """Inicia o painel web Flask"""
-    print("\n🌐 Iniciando painel web Flask...")
-    print("🔗 Acesse: http://localhost:5000")
-    print("⚠️ Pressione Ctrl+C para parar")
-    
-    try:
-        subprocess.run([sys.executable, 'app_web.py'])
-    except KeyboardInterrupt:
-        print("\n✅ Painel web parado.")
-    except Exception as e:
-        print(f"\n❌ Erro ao iniciar painel web: {e}")
-
-def iniciar_bot_telegram():
-    """Inicia o bot do Telegram"""
-    print("\n🤖 Iniciando bot do Telegram...")
-    print("⚠️ Pressione Ctrl+C para parar")
-    
-    try:
-        subprocess.run([sys.executable, 'telegram_bot.py'])
-    except KeyboardInterrupt:
-        print("\n✅ Bot do Telegram parado.")
-    except Exception as e:
-        print(f"\n❌ Erro ao iniciar bot: {e}")
 
 # ========== FUNÇÃO PRINCIPAL ==========
 
@@ -602,7 +576,7 @@ def main():
         mostrar_menu_principal()
         
         try:
-            opcao = input("🎯 Escolha uma opção (1-6): ").strip()
+            opcao = input("🎯 Escolha uma opção (1-4): ").strip()
             
             if opcao == '1':
                 # Processar arquivos
@@ -633,16 +607,6 @@ def main():
                 aguardar_enter()
             
             elif opcao == '2':
-                # Painel web
-                iniciar_painel_web()
-                aguardar_enter()
-            
-            elif opcao == '3':
-                # Bot Telegram
-                iniciar_bot_telegram()
-                aguardar_enter()
-            
-            elif opcao == '4':
                 # Ver arquivos
                 arquivos = listar_arquivos()
                 limpar_tela()
@@ -658,12 +622,12 @@ def main():
                 
                 aguardar_enter()
             
-            elif opcao == '5':
+            elif opcao == '3':
                 # Ajuda
                 mostrar_ajuda()
                 aguardar_enter()
             
-            elif opcao == '6':
+            elif opcao == '4':
                 # Sair
                 limpar_tela()
                 print("👋 Obrigado por usar o CloudBR Terminal!")
@@ -671,7 +635,7 @@ def main():
                 break
             
             else:
-                print("❌ Opção inválida! Digite um número de 1 a 6.")
+                print("❌ Opção inválida! Digite um número de 1 a 4.")
                 time.sleep(1)
         
         except KeyboardInterrupt:
