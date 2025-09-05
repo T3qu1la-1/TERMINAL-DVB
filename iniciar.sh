@@ -1,8 +1,8 @@
 #!/bin/bash
 # -*- coding: utf-8 -*-
 """
-🚀 CloudBR - Script de Inicialização
-Inicia o sistema CloudBR Terminal com menu interativo
+🚀 CloudBR - Script de Inicialização Universal
+Funciona em Linux, WSL, Termux e outros sistemas Unix-like
 """
 
 clear
@@ -12,126 +12,131 @@ echo "🚀 CloudBR - Sistema de Processamento de Credenciais"
 echo "=================================================================="
 echo "📁 Processa arquivos TXT/ZIP/RAR até 4GB"
 echo "🇧🇷 Filtro automático para URLs brasileiras" 
-echo "⚡ 3 versões: Terminal, Web e Telegram Bot"
+echo "⚡ Sistema multiplataforma"
 echo "=================================================================="
 echo ""
 
-# Verifica se Python está instalado
-if ! command -v python3 &> /dev/null; then
-    echo "❌ Python 3 não encontrado!"
-    echo "💡 Instale o Python 3 para continuar"
+# Detecta o sistema operacional
+OS_TYPE="Unknown"
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    OS_TYPE="Linux"
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+    OS_TYPE="macOS"
+elif [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]]; then
+    OS_TYPE="Windows"
+elif [[ -n "$TERMUX_VERSION" ]]; then
+    OS_TYPE="Termux"
+fi
+
+echo "🔍 Sistema detectado: $OS_TYPE"
+
+# Função para verificar e instalar Python
+verificar_python() {
+    local python_cmd=""
+    
+    # Tenta diferentes comandos Python
+    for cmd in python3 python python3.11 python3.10 python3.9; do
+        if command -v "$cmd" &> /dev/null; then
+            python_cmd="$cmd"
+            break
+        fi
+    done
+    
+    if [ -z "$python_cmd" ]; then
+        echo "❌ Python não encontrado!"
+        echo "💡 Instalando Python..."
+        
+        if [[ "$OS_TYPE" == "Termux" ]]; then
+            pkg update && pkg install python
+        elif [[ "$OS_TYPE" == "Linux" ]] && command -v apt &> /dev/null; then
+            sudo apt update && sudo apt install -y python3 python3-pip
+        elif [[ "$OS_TYPE" == "Linux" ]] && command -v yum &> /dev/null; then
+            sudo yum install -y python3 python3-pip
+        elif [[ "$OS_TYPE" == "Linux" ]] && command -v pacman &> /dev/null; then
+            sudo pacman -S python python-pip
+        elif [[ "$OS_TYPE" == "macOS" ]] && command -v brew &> /dev/null; then
+            brew install python3
+        else
+            echo "❌ Não foi possível instalar Python automaticamente"
+            echo "💡 Por favor, instale o Python 3 manualmente e execute novamente"
+            exit 1
+        fi
+        
+        # Verifica novamente após instalação
+        for cmd in python3 python; do
+            if command -v "$cmd" &> /dev/null; then
+                python_cmd="$cmd"
+                break
+            fi
+        done
+    fi
+    
+    echo "✅ Python encontrado: $python_cmd"
+    echo "$python_cmd"
+}
+
+# Função para instalar pip se necessário
+verificar_pip() {
+    local python_cmd="$1"
+    
+    if ! $python_cmd -m pip --version &> /dev/null; then
+        echo "📦 Instalando pip..."
+        
+        if [[ "$OS_TYPE" == "Termux" ]]; then
+            pkg install python-pip
+        elif command -v curl &> /dev/null; then
+            curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+            $python_cmd get-pip.py
+            rm -f get-pip.py
+        else
+            echo "❌ Não foi possível instalar pip automaticamente"
+            exit 1
+        fi
+    fi
+}
+
+# Verifica Python
+PYTHON_CMD=$(verificar_python)
+
+# Verifica pip
+verificar_pip "$PYTHON_CMD"
+
+# Instala dependências do requirements.txt
+echo "🔍 Verificando dependências Python..."
+
+if [ -f "requirements.txt" ]; then
+    echo "📦 Instalando dependências do requirements.txt..."
+    $PYTHON_CMD -m pip install -r requirements.txt --user
+else
+    echo "📦 Instalando dependências básicas..."
+    $PYTHON_CMD -m pip install flask rarfile requests --user
+fi
+
+echo "✅ Dependências instaladas!"
+
+# Cria pasta de arquivos se não existir
+if [ ! -d "cloudsaqui" ]; then
+    echo "📁 Criando pasta 'cloudsaqui' para seus arquivos..."
+    mkdir -p cloudsaqui
+fi
+
+# Verifica se o arquivo principal existe
+if [ ! -f "terminal.py" ]; then
+    echo "❌ Arquivo terminal.py não encontrado!"
+    echo "💡 Certifique-se de estar na pasta correta do projeto"
     echo ""
     exit 1
 fi
 
-# Verifica se as dependências estão instaladas
-echo "🔍 Verificando dependências..."
-
-# Lista de pacotes necessários
-PACOTES=("flask" "rarfile" "requests")
-FALTANDO=()
-
-for pacote in "${PACOTES[@]}"; do
-    if ! python3 -c "import $pacote" &> /dev/null; then
-        FALTANDO+=("$pacote")
-    fi
-done
-
-# Instala pacotes em falta
-if [ ${#FALTANDO[@]} -gt 0 ]; then
-    echo "📦 Instalando dependências em falta: ${FALTANDO[*]}"
-    pip3 install "${FALTANDO[@]}"
-    echo ""
-fi
-
-# Verifica se os arquivos principais existem
-ARQUIVOS=("terminal.py" "app_web.py")
-for arquivo in "${ARQUIVOS[@]}"; do
-    if [ ! -f "$arquivo" ]; then
-        echo "❌ Arquivo $arquivo não encontrado!"
-        echo "💡 Certifique-se de que todos os arquivos estão na pasta"
-        echo ""
-        exit 1
-    fi
-done
-
-echo "✅ Dependências verificadas!"
+echo "✅ Sistema verificado!"
 echo ""
 
-# Menu de inicialização
-echo "🎯 Escolha como iniciar:"
-echo ""
-echo "1️⃣  Terminal Interativo (Recomendado)"
-echo "2️⃣  Painel Web (localhost:5000)"
-echo "3️⃣  Bot do Telegram"
-echo "4️⃣  Mostrar ajuda"
+# Inicia diretamente o sistema
+echo "🚀 Iniciando CloudBR Terminal..."
+echo "💡 Use Ctrl+C para sair a qualquer momento"
 echo ""
 
-read -p "🎯 Escolha uma opção (1-4): " opcao
-
-echo ""
-
-case $opcao in
-    1)
-        echo "🚀 Iniciando CloudBR Terminal..."
-        echo "💡 Use Ctrl+C para sair a qualquer momento"
-        echo ""
-        python3 terminal.py
-        ;;
-    2)
-        echo "🌐 Iniciando Painel Web..."
-        echo "🔗 Acesse: http://localhost:5000"
-        echo "💡 Use Ctrl+C para parar o servidor"
-        echo ""
-        python3 app_web.py
-        ;;
-    3)
-        echo "🤖 Iniciando Bot do Telegram..."
-        echo "💡 Use Ctrl+C para parar o bot"
-        echo ""
-        python3 telegram_bot.py
-        ;;
-    4)
-        echo "📖 AJUDA - CloudBR Sistema:"
-        echo "=================================================================="
-        echo ""
-        echo "🎯 VERSÕES DISPONÍVEIS:"
-        echo ""
-        echo "🖥️  TERMINAL (terminal.py):"
-        echo "    • Interface de menu interativo no terminal"
-        echo "    • Processa arquivos da pasta local"
-        echo "    • Ideal para uso offline e processamento em lote"
-        echo ""
-        echo "🌐 PAINEL WEB (app_web.py):"
-        echo "    • Interface web moderna no navegador"
-        echo "    • Upload de arquivos até 4GB"
-        echo "    • Acesso via http://localhost:5000"
-        echo ""
-        echo "🤖 BOT TELEGRAM (telegram_bot.py):"
-        echo "    • Bot automatizado no Telegram"
-        echo "    • Processa arquivos enviados no chat"
-        echo "    • Resultado enviado como arquivos"
-        echo ""
-        echo "📁 COMO USAR:"
-        echo "1. Coloque arquivos TXT/ZIP/RAR na pasta 'cloudsaqui'"
-        echo "2. Execute: ./iniciar.sh"
-        echo "3. Escolha a versão desejada"
-        echo "4. Siga as instruções na tela"
-        echo ""
-        echo "🇧🇷 RECURSOS:"
-        echo "• Filtro automático para URLs brasileiras"
-        echo "• Remoção de spam e linhas inválidas"
-        echo "• Geração de arquivos com nomes organizados"
-        echo "• Suporte a arquivos até 4GB"
-        echo ""
-        echo "=================================================================="
-        ;;
-    *)
-        echo "❌ Opção inválida!"
-        echo "💡 Execute novamente e escolha 1, 2, 3 ou 4"
-        exit 1
-        ;;
-esac
+$PYTHON_CMD terminal.py
 
 echo ""
 echo "👋 CloudBR finalizado. Obrigado!"
