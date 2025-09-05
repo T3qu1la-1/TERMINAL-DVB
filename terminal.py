@@ -344,7 +344,13 @@ def listar_arquivos():
         if arquivo.lower().endswith(('.txt', '.zip', '.rar')):
             caminho_completo = os.path.join(pasta_atual, arquivo)
             # Pula se for o próprio script ou arquivos do sistema
-            if arquivo in ['terminal.py', 'app_web.py', 'telegram_bot.py', 'iniciar.sh']:
+            arquivos_sistema = [
+                'terminal.py', 'app_web.py', 'telegram_bot.py', 
+                'iniciar.sh', 'iniciar.bat', 'iniciar.ps1',
+                'requirements.txt', 'pyproject.toml', 'uv.lock',
+                'README.md', 'replit.md', '.replit'
+            ]
+            if arquivo in arquivos_sistema:
                 continue
             
             try:
