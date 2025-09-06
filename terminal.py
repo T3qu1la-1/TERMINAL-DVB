@@ -172,11 +172,19 @@ def validar_credencial(linha):
     return True
 
 def processar_arquivo_txt(arquivo_path):
-    """Processa arquivo TXT com múltiplas tentativas de encoding"""
+    """Processa arquivo TXT com processamento otimizado para arquivos gigantes"""
     credenciais = []
     brasileiras = []
     stats = {'total_lines': 0, 'valid_lines': 0, 'brazilian_lines': 0, 'spam_removed': 0}
     exemplos_rejeitados = []
+    
+    # Verifica tamanho do arquivo
+    tamanho_arquivo = os.path.getsize(arquivo_path) / (1024 * 1024 * 1024)  # GB
+    print(f"  📏 Tamanho do arquivo: {tamanho_arquivo:.1f} GB")
+    
+    # Para arquivos gigantes (>5GB), usa processamento em chunks
+    if tamanho_arquivo > 5.0:
+        return processar_arquivo_gigante(arquivo_path)
     
     # Tenta diferentes encodings
     encodings = ['utf-8', 'latin1', 'cp1252', 'iso-8859-1']
@@ -186,26 +194,50 @@ def processar_arquivo_txt(arquivo_path):
             with open(arquivo_path, 'r', encoding=encoding, errors='ignore') as f:
                 print(f"  📄 Lendo com encoding: {encoding}")
                 
-                for linha in f:
-                    stats['total_lines'] += 1
-                    linha_limpa = linha.strip()
+                # Processa em batches de 10000 linhas para economizar RAM
+                batch_size = 10000
+                batch_count = 0
+                
+                while True:
+                    linhas_batch = []
+                    for _ in range(batch_size):
+                        linha = f.readline()
+                        if not linha:  # EOF
+                            break
+                        linhas_batch.append(linha)
                     
-                    if not linha_limpa:  # Pula linhas vazias
-                        continue
+                    if not linhas_batch:  # Não há mais linhas
+                        break
                     
-                    if validar_credencial(linha_limpa):
-                        credenciais.append(linha_limpa)
-                        stats['valid_lines'] += 1
+                    batch_count += 1
+                    print(f"    🔄 Processando batch {batch_count} ({len(linhas_batch)} linhas)...")
+                    
+                    # Processa o batch atual
+                    for linha in linhas_batch:
+                        stats['total_lines'] += 1
+                        linha_limpa = linha.strip()
                         
-                        # Verifica se é brasileira
-                        if is_brazilian_url(linha_limpa):
-                            brasileiras.append(linha_limpa)
-                            stats['brazilian_lines'] += 1
-                    else:
-                        stats['spam_removed'] += 1
-                        # Coleta exemplos de linhas rejeitadas (primeiras 5)
-                        if len(exemplos_rejeitados) < 5:
-                            exemplos_rejeitados.append(linha_limpa[:100])
+                        if not linha_limpa:  # Pula linhas vazias
+                            continue
+                        
+                        if validar_credencial(linha_limpa):
+                            credenciais.append(linha_limpa)
+                            stats['valid_lines'] += 1
+                            
+                            # Verifica se é brasileira
+                            if is_brazilian_url(linha_limpa):
+                                brasileiras.append(linha_limpa)
+                                stats['brazilian_lines'] += 1
+                        else:
+                            stats['spam_removed'] += 1
+                            # Coleta exemplos de linhas rejeitadas (primeiras 5)
+                            if len(exemplos_rejeitados) < 5:
+                                exemplos_rejeitados.append(linha_limpa[:100])
+                    
+                    # Mostra progresso
+                    if batch_count % 10 == 0:
+                        print(f"    📊 Progresso: {stats['total_lines']:,} linhas, {len(credenciais):,} válidas")
+                
                 break  # Se conseguiu ler, sai do loop
                 
         except UnicodeDecodeError:
@@ -213,6 +245,103 @@ def processar_arquivo_txt(arquivo_path):
         except Exception as e:
             print(f"❌ Erro ao processar {arquivo_path} com {encoding}: {e}")
             continue
+
+def processar_arquivo_gigante(arquivo_path):
+    """Processamento especial para arquivos gigantescos (>5GB)"""
+    print("  🐘 MODO ARQUIVO GIGANTE ATIVADO!")
+    print("  ⚡ Processamento otimizado para economizar RAM")
+    
+    credenciais = []
+    brasileiras = []
+    stats = {'total_lines': 0, 'valid_lines': 0, 'brazilian_lines': 0, 'spam_removed': 0}
+    
+    # Arquivo temporário para credenciais válidas
+    import tempfile
+    temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8')
+    temp_br_file = tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8')
+    
+    try:
+        with open(arquivo_path, 'r', encoding='utf-8', errors='ignore') as f:
+            print("  📄 Lendo arquivo gigante...")
+            
+            chunk_size = 1000  # Processa apenas 1000 linhas por vez
+            chunk_count = 0
+            
+            while True:
+                linhas_chunk = []
+                for _ in range(chunk_size):
+                    linha = f.readline()
+                    if not linha:  # EOF
+                        break
+                    linhas_chunk.append(linha)
+                
+                if not linhas_chunk:  # Não há mais linhas
+                    break
+                
+                chunk_count += 1
+                
+                # Processa chunk atual
+                credenciais_chunk = []
+                brasileiras_chunk = []
+                
+                for linha in linhas_chunk:
+                    stats['total_lines'] += 1
+                    linha_limpa = linha.strip()
+                    
+                    if not linha_limpa:
+                        continue
+                    
+                    if validar_credencial(linha_limpa):
+                        credenciais_chunk.append(linha_limpa)
+                        stats['valid_lines'] += 1
+                        
+                        # Verifica se é brasileira
+                        if is_brazilian_url(linha_limpa):
+                            brasileiras_chunk.append(linha_limpa)
+                            stats['brazilian_lines'] += 1
+                    else:
+                        stats['spam_removed'] += 1
+                
+                # Salva o chunk processado nos arquivos temporários
+                for cred in credenciais_chunk:
+                    temp_file.write(cred + '\n')
+                
+                for br in brasileiras_chunk:
+                    temp_br_file.write(br + '\n')
+                
+                # Mostra progresso a cada 100 chunks
+                if chunk_count % 100 == 0:
+                    progress_gb = (stats['total_lines'] * 50) / (1024 * 1024)  # estimativa
+                    print(f"    📊 Chunk {chunk_count}: {stats['total_lines']:,} linhas, "
+                          f"{stats['valid_lines']:,} válidas (~{progress_gb:.1f}MB processados)")
+        
+        # Fecha arquivos temporários
+        temp_file.close()
+        temp_br_file.close()
+        
+        # Lê os resultados dos arquivos temporários
+        print("  📥 Carregando resultados processados...")
+        
+        with open(temp_file.name, 'r', encoding='utf-8') as tf:
+            credenciais = [linha.strip() for linha in tf.readlines()]
+        
+        with open(temp_br_file.name, 'r', encoding='utf-8') as tbf:
+            brasileiras = [linha.strip() for linha in tbf.readlines()]
+        
+        # Remove arquivos temporários
+        os.unlink(temp_file.name)
+        os.unlink(temp_br_file.name)
+        
+        print(f"  ✅ Arquivo gigante processado com sucesso!")
+        
+    except Exception as e:
+        print(f"  ❌ Erro no processamento gigante: {e}")
+        # Limpa arquivos temporários em caso de erro
+        try:
+            os.unlink(temp_file.name)
+            os.unlink(temp_br_file.name)
+        except:
+            pass
     
     # Mostra exemplos de linhas rejeitadas para debug
     if exemplos_rejeitados:
