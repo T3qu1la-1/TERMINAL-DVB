@@ -69,7 +69,7 @@ def aguardar_enter():
 def is_brazilian_url(linha):
     """Verifica se uma linha contém URL brasileira"""
     linha_lower = linha.lower()
-    
+
     # Extrai a parte da URL da linha
     if ':' in linha:
         partes = linha.split(':')
@@ -81,47 +81,47 @@ def is_brazilian_url(linha):
             url_parte = partes[0]
     else:
         url_parte = linha_lower
-    
+
     # Verifica domínios .br diretos
     if '.br' in url_parte:
         return True
-    
+
     # Verifica sites brasileiros conhecidos
     sites_brasileiros_completos = [
         # Bancos principais
         'itau.com', 'bradesco.com', 'bb.com', 'santander.com',
         'nubank.com', 'inter.co', 'sicoob.com', 'sicredi.com',
-        
+
         # E-commerce
         'americanas.com', 'submarino.com', 'magazineluiza.com',
         'mercadolivre.com', 'casasbahia.com', 'extra.com',
         'pontofrio.com', 'netshoes.com', 'dafiti.com',
-        
+
         # Portais
         'uol.com', 'globo.com', 'terra.com', 'ig.com', 'r7.com',
         'folha.com', 'estadao.com', 'veja.com', 'abril.com',
-        
+
         # Telecom
         'vivo.com', 'tim.com', 'claro.com', 'oi.com',
-        
+
         # Outros
         'correios.com', 'webmotors.com', 'olx.com', 'zapimoveis.com'
     ]
-    
+
     for site in sites_brasileiros_completos:
         if site in url_parte:
             return True
-    
+
     return False
 
 def validar_credencial(linha):
     """Valida se uma linha contém credencial no formato email:senha ou user:senha"""
     linha = linha.strip()
-    
+
     # Remove linhas vazias ou muito curtas
     if len(linha) < 5:
         return False
-    
+
     # Remove apenas spam muito óbvio
     spam_obvio = [
         'telegram.me/', 't.me/', '@canal', '@grupo',
@@ -129,20 +129,20 @@ def validar_credencial(linha):
         '****', '====', '----', '____',
         'CRACKED BY', 'HACKED BY', 'FREE COMBO'
     ]
-    
+
     linha_lower = linha.lower()
     for spam in spam_obvio:
         if spam.lower() in linha_lower:
             return False
-    
+
     # Verifica se tem pelo menos um dois pontos
     if ':' not in linha:
         return False
-    
+
     partes = linha.split(':')
     if len(partes) < 2:
         return False
-    
+
     # Extrai usuário e senha conforme formato
     if len(partes) == 2:
         # formato: user:pass
@@ -160,15 +160,15 @@ def validar_credencial(linha):
             usuario, senha = partes[1].strip(), ':'.join(partes[2:]).strip()
         else:
             usuario, senha = partes[0].strip(), ':'.join(partes[1:]).strip()
-    
+
     # Validação básica de usuário e senha
     if len(usuario) < 1 or len(senha) < 1:
         return False
-    
+
     # Rejeita se usuário ou senha são só símbolos
     if not re.search(r'[a-zA-Z0-9]', usuario) or not re.search(r'[a-zA-Z0-9]', senha):
         return False
-    
+
     return True
 
 def processar_arquivo_txt(arquivo_path):
@@ -177,27 +177,27 @@ def processar_arquivo_txt(arquivo_path):
     brasileiras = []
     stats = {'total_lines': 0, 'valid_lines': 0, 'brazilian_lines': 0, 'spam_removed': 0}
     exemplos_rejeitados = []
-    
+
     # Verifica tamanho do arquivo
     tamanho_arquivo = os.path.getsize(arquivo_path) / (1024 * 1024 * 1024)  # GB
     print(f"  📏 Tamanho do arquivo: {tamanho_arquivo:.1f} GB")
-    
+
     # Para arquivos gigantes (>5GB), usa processamento em chunks
     if tamanho_arquivo > 5.0:
         return processar_arquivo_gigante(arquivo_path)
-    
+
     # Tenta diferentes encodings
     encodings = ['utf-8', 'latin1', 'cp1252', 'iso-8859-1']
-    
+
     for encoding in encodings:
         try:
             with open(arquivo_path, 'r', encoding=encoding, errors='ignore') as f:
                 print(f"  📄 Lendo com encoding: {encoding}")
-                
+
                 # Processa em batches de 10000 linhas para economizar RAM
                 batch_size = 10000
                 batch_count = 0
-                
+
                 while True:
                     linhas_batch = []
                     for _ in range(batch_size):
@@ -205,25 +205,25 @@ def processar_arquivo_txt(arquivo_path):
                         if not linha:  # EOF
                             break
                         linhas_batch.append(linha)
-                    
+
                     if not linhas_batch:  # Não há mais linhas
                         break
-                    
+
                     batch_count += 1
                     print(f"    🔄 Processando batch {batch_count} ({len(linhas_batch)} linhas)...")
-                    
+
                     # Processa o batch atual
                     for linha in linhas_batch:
                         stats['total_lines'] += 1
                         linha_limpa = linha.strip()
-                        
+
                         if not linha_limpa:  # Pula linhas vazias
                             continue
-                        
+
                         if validar_credencial(linha_limpa):
                             credenciais.append(linha_limpa)
                             stats['valid_lines'] += 1
-                            
+
                             # Verifica se é brasileira
                             if is_brazilian_url(linha_limpa):
                                 brasileiras.append(linha_limpa)
@@ -233,13 +233,13 @@ def processar_arquivo_txt(arquivo_path):
                             # Coleta exemplos de linhas rejeitadas (primeiras 5)
                             if len(exemplos_rejeitados) < 5:
                                 exemplos_rejeitados.append(linha_limpa[:100])
-                    
+
                     # Mostra progresso
                     if batch_count % 10 == 0:
                         print(f"    📊 Progresso: {stats['total_lines']:,} linhas, {len(credenciais):,} válidas")
-                
+
                 break  # Se conseguiu ler, sai do loop
-                
+
         except UnicodeDecodeError:
             continue  # Tenta próximo encoding
         except Exception as e:
@@ -250,23 +250,23 @@ def processar_arquivo_gigante(arquivo_path):
     """Processamento especial para arquivos gigantescos (>5GB)"""
     print("  🐘 MODO ARQUIVO GIGANTE ATIVADO!")
     print("  ⚡ Processamento otimizado para economizar RAM")
-    
+
     credenciais = []
     brasileiras = []
     stats = {'total_lines': 0, 'valid_lines': 0, 'brazilian_lines': 0, 'spam_removed': 0}
-    
+
     # Arquivo temporário para credenciais válidas
     import tempfile
     temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8')
     temp_br_file = tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8')
-    
+
     try:
         with open(arquivo_path, 'r', encoding='utf-8', errors='ignore') as f:
             print("  📄 Lendo arquivo gigante...")
-            
+
             chunk_size = 1000  # Processa apenas 1000 linhas por vez
             chunk_count = 0
-            
+
             while True:
                 linhas_chunk = []
                 for _ in range(chunk_size):
@@ -274,66 +274,66 @@ def processar_arquivo_gigante(arquivo_path):
                     if not linha:  # EOF
                         break
                     linhas_chunk.append(linha)
-                
+
                 if not linhas_chunk:  # Não há mais linhas
                     break
-                
+
                 chunk_count += 1
-                
+
                 # Processa chunk atual
                 credenciais_chunk = []
                 brasileiras_chunk = []
-                
+
                 for linha in linhas_chunk:
                     stats['total_lines'] += 1
                     linha_limpa = linha.strip()
-                    
+
                     if not linha_limpa:
                         continue
-                    
+
                     if validar_credencial(linha_limpa):
                         credenciais_chunk.append(linha_limpa)
                         stats['valid_lines'] += 1
-                        
+
                         # Verifica se é brasileira
                         if is_brazilian_url(linha_limpa):
                             brasileiras_chunk.append(linha_limpa)
                             stats['brazilian_lines'] += 1
                     else:
                         stats['spam_removed'] += 1
-                
+
                 # Salva o chunk processado nos arquivos temporários
                 for cred in credenciais_chunk:
                     temp_file.write(cred + '\n')
-                
+
                 for br in brasileiras_chunk:
                     temp_br_file.write(br + '\n')
-                
+
                 # Mostra progresso a cada 100 chunks
                 if chunk_count % 100 == 0:
                     progress_gb = (stats['total_lines'] * 50) / (1024 * 1024)  # estimativa
                     print(f"    📊 Chunk {chunk_count}: {stats['total_lines']:,} linhas, "
                           f"{stats['valid_lines']:,} válidas (~{progress_gb:.1f}MB processados)")
-        
+
         # Fecha arquivos temporários
         temp_file.close()
         temp_br_file.close()
-        
+
         # Lê os resultados dos arquivos temporários
         print("  📥 Carregando resultados processados...")
-        
+
         with open(temp_file.name, 'r', encoding='utf-8') as tf:
             credenciais = [linha.strip() for linha in tf.readlines()]
-        
+
         with open(temp_br_file.name, 'r', encoding='utf-8') as tbf:
             brasileiras = [linha.strip() for linha in tbf.readlines()]
-        
+
         # Remove arquivos temporários
         os.unlink(temp_file.name)
         os.unlink(temp_br_file.name)
-        
+
         print(f"  ✅ Arquivo gigante processado com sucesso!")
-        
+
     except Exception as e:
         print(f"  ❌ Erro no processamento gigante: {e}")
         # Limpa arquivos temporários em caso de erro
@@ -342,17 +342,17 @@ def processar_arquivo_gigante(arquivo_path):
             os.unlink(temp_br_file.name)
         except:
             pass
-    
+
     # Mostra exemplos de linhas rejeitadas para debug
     if exemplos_rejeitados:
         print(f"  🔍 Exemplos de linhas rejeitadas:")
         for i, exemplo in enumerate(exemplos_rejeitados, 1):
             print(f"    {i}. {exemplo}")
-    
+
     # Atualiza stats corrigindo contadores
     stats['valid_lines'] = len(credenciais)
     stats['brazilian_lines'] = len(brasileiras)
-    
+
     return credenciais, brasileiras, stats
 
 def processar_arquivo_zip(arquivo_path):
@@ -360,41 +360,41 @@ def processar_arquivo_zip(arquivo_path):
     todas_credenciais = []
     todas_brasileiras = []
     stats_total = {'total_lines': 0, 'valid_lines': 0, 'brazilian_lines': 0, 'spam_removed': 0}
-    
+
     try:
         with zipfile.ZipFile(arquivo_path, 'r') as zip_file:
             for nome_arquivo in zip_file.namelist():
                 if nome_arquivo.lower().endswith('.txt'):
                     print(f"  📄 Processando: {nome_arquivo}")
-                    
+
                     try:
                         with zip_file.open(nome_arquivo) as txt_file:
                             content = txt_file.read().decode('utf-8', errors='ignore')
-                            
+
                             linhas = content.split('\n')
                             for linha in linhas:
                                 stats_total['total_lines'] += 1
                                 linha_limpa = linha.strip()
-                                
+
                                 if not linha_limpa:
                                     continue
-                                
+
                                 if validar_credencial(linha_limpa):
                                     todas_credenciais.append(linha_limpa)
                                     stats_total['valid_lines'] += 1
-                                    
+
                                     if is_brazilian_url(linha_limpa):
                                         todas_brasileiras.append(linha_limpa)
                                         stats_total['brazilian_lines'] += 1
                                 else:
                                     stats_total['spam_removed'] += 1
-                    
+
                     except Exception as e:
                         print(f"    ⚠️ Erro no arquivo {nome_arquivo}: {e}")
-    
+
     except Exception as e:
         print(f"❌ Erro ao processar ZIP {arquivo_path}: {e}")
-    
+
     return todas_credenciais, todas_brasileiras, stats_total
 
 def processar_arquivo_rar(arquivo_path):
@@ -402,48 +402,48 @@ def processar_arquivo_rar(arquivo_path):
     todas_credenciais = []
     todas_brasileiras = []
     stats_total = {'total_lines': 0, 'valid_lines': 0, 'brazilian_lines': 0, 'spam_removed': 0}
-    
+
     try:
         with rarfile.RarFile(arquivo_path, 'r') as rar_file:
             for nome_arquivo in rar_file.namelist():
                 if nome_arquivo.lower().endswith('.txt'):
                     print(f"  📄 Processando: {nome_arquivo}")
-                    
+
                     try:
                         with rar_file.open(nome_arquivo) as txt_file:
                             content = txt_file.read().decode('utf-8', errors='ignore')
-                            
+
                             linhas = content.split('\n')
                             for linha in linhas:
                                 stats_total['total_lines'] += 1
                                 linha_limpa = linha.strip()
-                                
+
                                 if not linha_limpa:
                                     continue
-                                
+
                                 if validar_credencial(linha_limpa):
                                     todas_credenciais.append(linha_limpa)
                                     stats_total['valid_lines'] += 1
-                                    
+
                                     if is_brazilian_url(linha_limpa):
                                         todas_brasileiras.append(linha_limpa)
                                         stats_total['brazilian_lines'] += 1
                                 else:
                                     stats_total['spam_removed'] += 1
-                    
+
                     except Exception as e:
                         print(f"    ⚠️ Erro no arquivo {nome_arquivo}: {e}")
-    
+
     except Exception as e:
         print(f"❌ Erro ao processar RAR {arquivo_path}: {e}")
-    
+
     return todas_credenciais, todas_brasileiras, stats_total
 
 def gerar_nome_arquivo(nome_original, tipo="geral"):
     """Gera nome bonito para o arquivo de saída"""
     timestamp = datetime.now().strftime("%d.%m.%Y")
     nome_base = os.path.splitext(nome_original)[0]
-    
+
     if tipo == "brasileiras":
         return f"cloudbr-{nome_base}-BR-{timestamp}.txt"
     else:
@@ -453,7 +453,7 @@ def salvar_resultado(credenciais, nome_arquivo):
     """Salva resultado em arquivo"""
     if not credenciais:
         return False
-    
+
     try:
         with open(nome_arquivo, 'w', encoding='utf-8') as f:
             for credencial in credenciais:
@@ -467,21 +467,21 @@ def listar_arquivos():
     """Lista arquivos TXT, ZIP e RAR na pasta atual"""
     arquivos = []
     pasta_atual = '.'
-    
+
     # Lista arquivos na pasta atual
     for arquivo in os.listdir(pasta_atual):
         if arquivo.lower().endswith(('.txt', '.zip', '.rar')):
             caminho_completo = os.path.join(pasta_atual, arquivo)
             # Pula se for o próprio script ou arquivos do sistema
             arquivos_sistema = [
-                'terminal.py', 'app_web.py', 'telegram_bot.py', 
+                'terminal.py', 'app_web.py', 'telegram_bot.py',
                 'iniciar.sh', 'iniciar.bat', 'iniciar.ps1',
                 'requirements.txt', 'pyproject.toml', 'uv.lock',
                 'README.md', 'replit.md', '.replit'
             ]
             if arquivo in arquivos_sistema:
                 continue
-            
+
             try:
                 tamanho = os.path.getsize(caminho_completo)
                 arquivos.append({
@@ -492,7 +492,7 @@ def listar_arquivos():
                 })
             except OSError:
                 continue
-    
+
     # Também procura na pasta cloudsaqui se existir
     pasta_clouds = 'cloudsaqui'
     if os.path.exists(pasta_clouds):
@@ -509,14 +509,14 @@ def listar_arquivos():
                     })
                 except OSError:
                     continue
-    
+
     return sorted(arquivos, key=lambda x: x['nome'])
 
 def mostrar_menu_principal():
     """Mostra o menu principal"""
     limpar_tela()
     mostrar_banner()
-    
+
     print("🎯 MENU PRINCIPAL:")
     print()
     print("1️⃣  Processar arquivos da pasta atual")
@@ -531,21 +531,21 @@ def mostrar_menu_processamento(arquivos):
     limpar_tela()
     print("📁 ARQUIVOS ENCONTRADOS NA PASTA ATUAL:")
     print("=" * 70)
-    
+
     if not arquivos:
         print("❌ Nenhum arquivo TXT/ZIP/RAR encontrado!")
         print()
         print("💡 Coloque seus arquivos TXT/ZIP/RAR nesta pasta e tente novamente.")
         return []
-    
+
     for i, arquivo in enumerate(arquivos, 1):
         print(f"{i:2d}. 📄 {arquivo['nome']} ({arquivo['tamanho_mb']:.1f} MB)")
-    
+
     print()
     print("0️⃣  Processar TODOS os arquivos")
     print("🔙 Voltar ao menu principal (digite 'v')")
     print("=" * 70)
-    
+
     return arquivos
 
 def processar_arquivo_escolhido(arquivo):
@@ -554,9 +554,9 @@ def processar_arquivo_escolhido(arquivo):
     caminho = arquivo['caminho']
     print(f"\n🚀 Processando: {nome}")
     print("=" * 50)
-    
+
     start_time = time.time()
-    
+
     # Determina tipo do arquivo e processa
     if nome.lower().endswith('.txt'):
         credenciais, brasileiras, stats = processar_arquivo_txt(caminho)
@@ -567,9 +567,9 @@ def processar_arquivo_escolhido(arquivo):
     else:
         print("❌ Formato de arquivo não suportado!")
         return
-    
+
     tempo_processamento = time.time() - start_time
-    
+
     # Mostra estatísticas
     print(f"\n📊 ESTATÍSTICAS:")
     print(f"📝 Linhas totais: {stats['total_lines']:,}")
@@ -577,41 +577,91 @@ def processar_arquivo_escolhido(arquivo):
     print(f"🇧🇷 URLs brasileiras: {len(brasileiras):,}")
     print(f"🗑️ Spam removido: {stats['spam_removed']:,}")
     print(f"⏱️ Tempo: {tempo_processamento:.1f}s")
-    
+
     if len(credenciais) > 0:
         taxa = (len(credenciais) / stats['total_lines']) * 100
         print(f"📈 Taxa de sucesso: {taxa:.1f}%")
-    
-    # Salva resultados
-    if credenciais:
-        nome_geral = gerar_nome_arquivo(nome, "geral")
-        if salvar_resultado(credenciais, nome_geral):
-            print(f"\n✅ Arquivo geral salvo: {nome_geral}")
-    
-    if brasileiras:
-        nome_br = gerar_nome_arquivo(nome, "brasileiras")
-        if salvar_resultado(brasileiras, nome_br):
-            print(f"✅ Arquivo brasileiro salvo: {nome_br}")
-    
-    if not credenciais:
-        print("\n❌ Nenhuma credencial válida encontrada!")
+
+    # PERGUNTA qual tipo de arquivo quer salvar
+    arquivos_salvos = []
+
+    if credenciais or brasileiras:
+        print(f"\n🎯 ESCOLHA O TIPO DE ARQUIVO PARA SALVAR:")
+        print(f"1️⃣  Apenas credenciais brasileiras ({len(brasileiras):,} items)")
+        print(f"2️⃣  Todas as credenciais ({len(credenciais):,} items)")
+        print(f"3️⃣  Ambos os arquivos")
+
+        while True:
+            escolha_tipo = input("\n🎯 Escolha (1-3): ").strip()
+
+            if escolha_tipo == '1' and brasileiras:
+                nome_br = gerar_nome_arquivo(nome, "brasileiras")
+                if salvar_resultado(brasileiras, nome_br):
+                    arquivos_salvos.append(nome_br)
+                break
+            elif escolha_tipo == '2' and credenciais:
+                nome_geral = gerar_nome_arquivo(nome, "geral")
+                if salvar_resultado(credenciais, nome_geral):
+                    arquivos_salvos.append(nome_geral)
+                break
+            elif escolha_tipo == '3':
+                if brasileiras:
+                    nome_br = gerar_nome_arquivo(nome, "brasileiras")
+                    if salvar_resultado(brasileiras, nome_br):
+                        arquivos_salvos.append(nome_br)
+                if credenciais:
+                    nome_geral = gerar_nome_arquivo(nome, "geral")
+                    if salvar_resultado(credenciais, nome_geral):
+                        arquivos_salvos.append(nome_geral)
+                break
+            else:
+                print("❌ Opção inválida! Digite 1, 2 ou 3.")
+
+    # SEMPRE mostra o resultado final
+    print(f"\n" + "=" * 70)
+    print(f"🎯 RESULTADO FINAL DO PROCESSAMENTO")
+    print(f"=" * 70)
+    print(f"📁 Arquivo processado: {nome}")
+    print(f"📊 Total de credenciais extraídas: {len(credenciais):,}")
+    print(f"🇧🇷 Credenciais brasileiras: {len(brasileiras):,}")
+    print(f"⏱️ Tempo total de processamento: {tempo_processamento:.1f}s")
+
+    if arquivos_salvos:
+        print(f"\n💾 ARQUIVOS GERADOS COM SUCESSO:")
+        for arquivo_salvo in arquivos_salvos:
+            caminho_completo = os.path.abspath(arquivo_salvo)
+            tamanho_mb = os.path.getsize(caminho_completo) / (1024 * 1024)
+            print(f"    📄 {arquivo_salvo} ({tamanho_mb:.1f} MB)")
+            print(f"       📍 Localização: {caminho_completo}")
+    else:
+        print("❌ Nenhuma credencial válida encontrada - nenhum arquivo gerado!")
+
+    # APAGA o arquivo original após processar
+    try:
+        os.remove(caminho)
+        print(f"\n🗑️ Arquivo original removido: {nome}")
+        print(f"✅ Processamento concluído com sucesso!")
+    except Exception as e:
+        print(f"\n⚠️ Não foi possível remover o arquivo original: {e}")
+
+    print(f"\n" + "=" * 70)
 
 def processar_todos_arquivos(arquivos):
     """Processa todos os arquivos da lista"""
     print(f"\n🚀 PROCESSAMENTO EM LOTE - {len(arquivos)} arquivo(s)")
     print("=" * 70)
-    
+
     todas_credenciais = []
     todas_brasileiras = []
     stats_total = {'total_lines': 0, 'valid_lines': 0, 'brazilian_lines': 0, 'spam_removed': 0}
-    
+
     start_time = time.time()
-    
+
     for i, arquivo in enumerate(arquivos, 1):
         nome = arquivo['nome']
         caminho = arquivo['caminho']
         print(f"\n📁 [{i}/{len(arquivos)}] Processando: {nome}")
-        
+
         # Processa baseado na extensão
         if nome.lower().endswith('.txt'):
             creds, brs, stats = processar_arquivo_txt(caminho)
@@ -621,23 +671,23 @@ def processar_todos_arquivos(arquivos):
             creds, brs, stats = processar_arquivo_rar(caminho)
         else:
             continue
-        
+
         # Adiciona aos totais
         todas_credenciais.extend(creds)
         todas_brasileiras.extend(brs)
-        
+
         # Soma estatísticas
         for key in stats_total:
             stats_total[key] += stats[key]
-        
+
         print(f"  ✅ {len(creds):,} válidas, {len(brs):,} brasileiras")
-    
+
     tempo_total = time.time() - start_time
-    
+
     # Remove duplicatas
     credenciais_unicas = list(set(todas_credenciais))
     brasileiras_unicas = list(set(todas_brasileiras))
-    
+
     # Mostra resumo final
     print("\n" + "=" * 70)
     print("🎯 RESUMO FINAL DO LOTE:")
@@ -648,26 +698,38 @@ def processar_todos_arquivos(arquivos):
     print(f"🇧🇷 URLs brasileiras: {len(brasileiras_unicas):,}")
     print(f"🗑️ Spam removido: {stats_total['spam_removed']:,}")
     print(f"⏱️ Tempo total: {tempo_total:.1f}s")
-    
+
     if len(credenciais_unicas) > 0:
         taxa = (len(credenciais_unicas) / stats_total['total_lines']) * 100
         print(f"📈 Taxa de sucesso: {taxa:.1f}%")
-    
+
     # Salva resultados consolidados
     timestamp = datetime.now().strftime("%d.%m.%Y-%H%M")
-    
+
     if credenciais_unicas:
         nome_geral = f"cloudbr-LOTE-GERAL-{timestamp}.txt"
         if salvar_resultado(credenciais_unicas, nome_geral):
             print(f"\n✅ Arquivo geral consolidado: {nome_geral}")
-    
+
     if brasileiras_unicas:
         nome_br = f"cloudbr-LOTE-BR-{timestamp}.txt"
         if salvar_resultado(brasileiras_unicas, nome_br):
             print(f"✅ Arquivo brasileiro consolidado: {nome_br}")
-    
+
     if not credenciais_unicas:
         print("\n❌ Nenhuma credencial válida encontrada em nenhum arquivo!")
+
+    # APAGA os arquivos originais após processar
+    for arquivo in arquivos:
+        try:
+            os.remove(arquivo['caminho'])
+            print(f"\n🗑️ Arquivo original removido: {arquivo['nome']}")
+        except Exception as e:
+            print(f"\n⚠️ Não foi possível remover o arquivo original {arquivo['nome']}: {e}")
+
+    print(f"\n✅ Processamento em lote concluído!")
+    print(f"\n" + "=" * 70)
+
 
 def mostrar_ajuda():
     """Mostra instruções de uso"""
@@ -709,24 +771,24 @@ def main():
     """Função principal do programa"""
     while True:
         mostrar_menu_principal()
-        
+
         try:
             opcao = input("🎯 Escolha uma opção (1-4): ").strip()
-            
+
             if opcao == '1':
                 # Processar arquivos
                 arquivos = listar_arquivos()
                 arquivos_menu = mostrar_menu_processamento(arquivos)
-                
+
                 if not arquivos_menu:
                     aguardar_enter()
                     continue
-                
+
                 escolha = input("\n🎯 Escolha um arquivo (número) ou 0 para todos: ").strip()
-                
+
                 if escolha.lower() == 'v':
                     continue
-                
+
                 try:
                     if escolha == '0':
                         processar_todos_arquivos(arquivos)
@@ -738,41 +800,41 @@ def main():
                             print("❌ Opção inválida!")
                 except ValueError:
                     print("❌ Digite um número válido!")
-                
+
                 aguardar_enter()
-            
+
             elif opcao == '2':
                 # Ver arquivos
                 arquivos = listar_arquivos()
                 limpar_tela()
                 print("📁 ARQUIVOS DISPONÍVEIS:")
                 print("=" * 70)
-                
+
                 if arquivos:
                     for arquivo in arquivos:
                         print(f"📄 {arquivo['nome']} - {arquivo['tamanho_mb']:.1f} MB")
                 else:
                     print("❌ Nenhum arquivo TXT/ZIP/RAR encontrado!")
                     print("💡 Coloque seus arquivos TXT/ZIP/RAR nesta pasta e tente novamente.")
-                
+
                 aguardar_enter()
-            
+
             elif opcao == '3':
                 # Ajuda
                 mostrar_ajuda()
                 aguardar_enter()
-            
+
             elif opcao == '4':
                 # Sair
                 limpar_tela()
                 print("👋 Obrigado por usar o CloudBR Terminal!")
                 print("🚀 Sistema encerrado com sucesso.")
                 break
-            
+
             else:
                 print("❌ Opção inválida! Digite um número de 1 a 4.")
                 time.sleep(1)
-        
+
         except KeyboardInterrupt:
             print("\n\n👋 Saindo do programa...")
             break
