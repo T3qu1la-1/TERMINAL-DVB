@@ -16,6 +16,7 @@ import time
 from datetime import datetime
 from collections import defaultdict
 import subprocess
+import threading
 
 # ========== CONFIGURAÇÕES ==========
 
@@ -114,6 +115,66 @@ def is_brazilian_url(linha):
 
     return False
 
+def mostrar_barra_progresso(atual, total, nome_processo, largura=50):
+    """Mostra barra de progresso em tempo real"""
+    if total == 0:
+        porcentagem = 0
+    else:
+        porcentagem = (atual / total) * 100
+    
+    blocos_completos = int(largura * atual // total) if total > 0 else 0
+    barra = '█' * blocos_completos + '▒' * (largura - blocos_completos)
+    
+    # Calcula tempo estimado
+    if atual > 0 and total > atual:
+        tempo_restante = ((total - atual) * time.time()) / atual if atual > 0 else 0
+        tempo_str = f" - ETA: {tempo_restante:.0f}s"
+    else:
+        tempo_str = ""
+    
+    # Atualiza na mesma linha
+    print(f"\r🔄 {nome_processo}: |{barra}| {atual:,}/{total:,} ({porcentagem:.1f}%){tempo_str}", end='', flush=True)
+
+def atualizar_progresso_continuo(stats, nome_arquivo, stop_event):
+    """Thread que atualiza o progresso continuamente"""
+    inicio = time.time()
+    
+    while not stop_event.is_set():
+        tempo_decorrido = time.time() - inicio
+        if stats['total_lines'] > 0:
+            velocidade = stats['total_lines'] / tempo_decorrido if tempo_decorrido > 0 else 0
+            print(f"\r⚡ Processando {nome_arquivo}: {stats['total_lines']:,} linhas | "
+                  f"{stats['valid_lines']:,} válidas | "
+                  f"Velocidade: {velocidade:.0f} linhas/s | "
+                  f"Tempo: {tempo_decorrido:.1f}s", end='', flush=True)
+        time.sleep(0.5)  # Atualiza a cada 0.5 segundos
+
+def salvar_com_progresso(credenciais, nome_arquivo):
+    """Salva arquivo com barra de progresso de download/escrita"""
+    if not credenciais:
+        return False
+
+    total_linhas = len(credenciais)
+    print(f"\n💾 Gerando arquivo: {nome_arquivo}")
+    
+    try:
+        with open(nome_arquivo, 'w', encoding='utf-8') as f:
+            for i, credencial in enumerate(credenciais, 1):
+                f.write(credencial + '\n')
+                
+                # Atualiza progresso a cada 1000 linhas ou no final
+                if i % 1000 == 0 or i == total_linhas:
+                    mostrar_barra_progresso(i, total_linhas, "Salvando arquivo")
+                    
+        print()  # Nova linha após a barra
+        tamanho_mb = os.path.getsize(nome_arquivo) / (1024 * 1024)
+        print(f"✅ Arquivo salvo: {nome_arquivo} ({tamanho_mb:.1f} MB)")
+        return True
+        
+    except Exception as e:
+        print(f"\n❌ Erro ao salvar {nome_arquivo}: {e}")
+        return False
+
 def validar_credencial(linha):
     """Valida se uma linha contém credencial no formato email:senha ou user:senha"""
     linha = linha.strip()
@@ -172,7 +233,7 @@ def validar_credencial(linha):
     return True
 
 def processar_arquivo_txt(arquivo_path):
-    """Processa arquivo TXT com processamento otimizado para arquivos gigantes"""
+    """Processa arquivo TXT com barra de progresso em tempo real"""
     credenciais = []
     brasileiras = []
     stats = {'total_lines': 0, 'valid_lines': 0, 'brazilian_lines': 0, 'spam_removed': 0}
@@ -186,68 +247,84 @@ def processar_arquivo_txt(arquivo_path):
     if tamanho_arquivo > 5.0:
         return processar_arquivo_gigante(arquivo_path)
 
+    # Conta total de linhas primeiro para a barra de progresso
+    print("  📊 Contando linhas do arquivo...")
+    total_linhas = 0
+    try:
+        with open(arquivo_path, 'r', encoding='utf-8', errors='ignore') as f:
+            for linha in f:
+                total_linhas += 1
+                if total_linhas % 100000 == 0:
+                    print(f"\r    Contadas: {total_linhas:,} linhas...", end='', flush=True)
+    except:
+        total_linhas = 1000000  # Estimativa se não conseguir contar
+
+    print(f"\n  📝 Total estimado: {total_linhas:,} linhas")
+
     # Tenta diferentes encodings
     encodings = ['utf-8', 'latin1', 'cp1252', 'iso-8859-1']
 
     for encoding in encodings:
         try:
+            # Inicia thread de progresso contínuo
+            nome_arquivo = os.path.basename(arquivo_path)
+            stop_event = threading.Event()
+            thread_progresso = threading.Thread(
+                target=atualizar_progresso_continuo, 
+                args=(stats, nome_arquivo, stop_event)
+            )
+            thread_progresso.start()
+
             with open(arquivo_path, 'r', encoding=encoding, errors='ignore') as f:
-                print(f"  📄 Lendo com encoding: {encoding}")
+                print(f"  📄 Processando com encoding: {encoding}")
+                print()  # Linha em branco para o progresso
 
-                # Processa em batches de 10000 linhas para economizar RAM
-                batch_size = 10000
-                batch_count = 0
+                linhas_processadas = 0
+                for linha in f:
+                    stats['total_lines'] += 1
+                    linhas_processadas += 1
+                    linha_limpa = linha.strip()
 
-                while True:
-                    linhas_batch = []
-                    for _ in range(batch_size):
-                        linha = f.readline()
-                        if not linha:  # EOF
-                            break
-                        linhas_batch.append(linha)
+                    if not linha_limpa:  # Pula linhas vazias
+                        continue
 
-                    if not linhas_batch:  # Não há mais linhas
-                        break
+                    if validar_credencial(linha_limpa):
+                        credenciais.append(linha_limpa)
+                        stats['valid_lines'] += 1
 
-                    batch_count += 1
-                    print(f"    🔄 Processando batch {batch_count} ({len(linhas_batch)} linhas)...")
+                        # Verifica se é brasileira
+                        if is_brazilian_url(linha_limpa):
+                            brasileiras.append(linha_limpa)
+                            stats['brazilian_lines'] += 1
+                    else:
+                        stats['spam_removed'] += 1
+                        # Coleta exemplos de linhas rejeitadas (primeiras 5)
+                        if len(exemplos_rejeitados) < 5:
+                            exemplos_rejeitados.append(linha_limpa[:100])
 
-                    # Processa o batch atual
-                    for linha in linhas_batch:
-                        stats['total_lines'] += 1
-                        linha_limpa = linha.strip()
+            # Para a thread de progresso
+            stop_event.set()
+            thread_progresso.join()
+            print()  # Nova linha após o progresso
 
-                        if not linha_limpa:  # Pula linhas vazias
-                            continue
-
-                        if validar_credencial(linha_limpa):
-                            credenciais.append(linha_limpa)
-                            stats['valid_lines'] += 1
-
-                            # Verifica se é brasileira
-                            if is_brazilian_url(linha_limpa):
-                                brasileiras.append(linha_limpa)
-                                stats['brazilian_lines'] += 1
-                        else:
-                            stats['spam_removed'] += 1
-                            # Coleta exemplos de linhas rejeitadas (primeiras 5)
-                            if len(exemplos_rejeitados) < 5:
-                                exemplos_rejeitados.append(linha_limpa[:100])
-
-                    # Mostra progresso
-                    if batch_count % 10 == 0:
-                        print(f"    📊 Progresso: {stats['total_lines']:,} linhas, {len(credenciais):,} válidas")
-
-                break  # Se conseguiu ler, sai do loop
+            break  # Se conseguiu ler, sai do loop
 
         except UnicodeDecodeError:
+            if 'stop_event' in locals():
+                stop_event.set()
+            if 'thread_progresso' in locals():
+                thread_progresso.join()
             continue  # Tenta próximo encoding
         except Exception as e:
+            if 'stop_event' in locals():
+                stop_event.set()
+            if 'thread_progresso' in locals():
+                thread_progresso.join()
             print(f"❌ Erro ao processar {arquivo_path} com {encoding}: {e}")
             continue
 
 def processar_arquivo_gigante(arquivo_path):
-    """Processamento especial para arquivos gigantescos (>5GB)"""
+    """Processamento especial para arquivos gigantescos (>5GB) com progresso em tempo real"""
     print("  🐘 MODO ARQUIVO GIGANTE ATIVADO!")
     print("  ⚡ Processamento otimizado para economizar RAM")
 
@@ -260,11 +337,21 @@ def processar_arquivo_gigante(arquivo_path):
     temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8')
     temp_br_file = tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8')
 
+    # Inicia thread de progresso contínuo
+    nome_arquivo = os.path.basename(arquivo_path)
+    stop_event = threading.Event()
+    thread_progresso = threading.Thread(
+        target=atualizar_progresso_continuo, 
+        args=(stats, f"{nome_arquivo} (GIGANTE)", stop_event)
+    )
+    thread_progresso.start()
+
     try:
         with open(arquivo_path, 'r', encoding='utf-8', errors='ignore') as f:
-            print("  📄 Lendo arquivo gigante...")
+            print("  📄 Processando arquivo gigante...")
+            print()  # Linha em branco para o progresso
 
-            chunk_size = 1000  # Processa apenas 1000 linhas por vez
+            chunk_size = 5000  # Aumenta chunk para arquivos gigantes
             chunk_count = 0
 
             while True:
@@ -309,17 +396,16 @@ def processar_arquivo_gigante(arquivo_path):
                 for br in brasileiras_chunk:
                     temp_br_file.write(br + '\n')
 
-                # Mostra progresso a cada 100 chunks
-                if chunk_count % 100 == 0:
-                    progress_gb = (stats['total_lines'] * 50) / (1024 * 1024)  # estimativa
-                    print(f"    📊 Chunk {chunk_count}: {stats['total_lines']:,} linhas, "
-                          f"{stats['valid_lines']:,} válidas (~{progress_gb:.1f}MB processados)")
+        # Para a thread de progresso
+        stop_event.set()
+        thread_progresso.join()
+        print()  # Nova linha após o progresso
 
         # Fecha arquivos temporários
         temp_file.close()
         temp_br_file.close()
 
-        # Lê os resultados dos arquivos temporários
+        # Lê os resultados dos arquivos temporários com progresso
         print("  📥 Carregando resultados processados...")
 
         with open(temp_file.name, 'r', encoding='utf-8') as tf:
@@ -335,6 +421,9 @@ def processar_arquivo_gigante(arquivo_path):
         print(f"  ✅ Arquivo gigante processado com sucesso!")
 
     except Exception as e:
+        # Para a thread de progresso em caso de erro
+        stop_event.set()
+        thread_progresso.join()
         print(f"  ❌ Erro no processamento gigante: {e}")
         # Limpa arquivos temporários em caso de erro
         try:
@@ -342,12 +431,6 @@ def processar_arquivo_gigante(arquivo_path):
             os.unlink(temp_br_file.name)
         except:
             pass
-
-    # Mostra exemplos de linhas rejeitadas para debug
-    if exemplos_rejeitados:
-        print(f"  🔍 Exemplos de linhas rejeitadas:")
-        for i, exemplo in enumerate(exemplos_rejeitados, 1):
-            print(f"    {i}. {exemplo}")
 
     # Atualiza stats corrigindo contadores
     stats['valid_lines'] = len(credenciais)
@@ -449,19 +532,7 @@ def gerar_nome_arquivo(nome_original, tipo="geral"):
     else:
         return f"cloudbr-{nome_base}-GERAL-{timestamp}.txt"
 
-def salvar_resultado(credenciais, nome_arquivo):
-    """Salva resultado em arquivo"""
-    if not credenciais:
-        return False
-
-    try:
-        with open(nome_arquivo, 'w', encoding='utf-8') as f:
-            for credencial in credenciais:
-                f.write(credencial + '\n')
-        return True
-    except Exception as e:
-        print(f"❌ Erro ao salvar {nome_arquivo}: {e}")
-        return False
+# Função salvar_resultado removida - agora usa salvar_com_progresso
 
 def listar_arquivos():
     """Lista arquivos TXT, ZIP e RAR na pasta atual"""
@@ -596,22 +667,22 @@ def processar_arquivo_escolhido(arquivo):
 
             if escolha_tipo == '1' and brasileiras:
                 nome_br = gerar_nome_arquivo(nome, "brasileiras")
-                if salvar_resultado(brasileiras, nome_br):
+                if salvar_com_progresso(brasileiras, nome_br):
                     arquivos_salvos.append(nome_br)
                 break
             elif escolha_tipo == '2' and credenciais:
                 nome_geral = gerar_nome_arquivo(nome, "geral")
-                if salvar_resultado(credenciais, nome_geral):
+                if salvar_com_progresso(credenciais, nome_geral):
                     arquivos_salvos.append(nome_geral)
                 break
             elif escolha_tipo == '3':
                 if brasileiras:
                     nome_br = gerar_nome_arquivo(nome, "brasileiras")
-                    if salvar_resultado(brasileiras, nome_br):
+                    if salvar_com_progresso(brasileiras, nome_br):
                         arquivos_salvos.append(nome_br)
                 if credenciais:
                     nome_geral = gerar_nome_arquivo(nome, "geral")
-                    if salvar_resultado(credenciais, nome_geral):
+                    if salvar_com_progresso(credenciais, nome_geral):
                         arquivos_salvos.append(nome_geral)
                 break
             else:
@@ -703,18 +774,18 @@ def processar_todos_arquivos(arquivos):
         taxa = (len(credenciais_unicas) / stats_total['total_lines']) * 100
         print(f"📈 Taxa de sucesso: {taxa:.1f}%")
 
-    # Salva resultados consolidados
+    # Salva resultados consolidados com progresso
     timestamp = datetime.now().strftime("%d.%m.%Y-%H%M")
 
     if credenciais_unicas:
         nome_geral = f"cloudbr-LOTE-GERAL-{timestamp}.txt"
-        if salvar_resultado(credenciais_unicas, nome_geral):
-            print(f"\n✅ Arquivo geral consolidado: {nome_geral}")
+        if salvar_com_progresso(credenciais_unicas, nome_geral):
+            print(f"✅ Arquivo geral consolidado salvo!")
 
     if brasileiras_unicas:
         nome_br = f"cloudbr-LOTE-BR-{timestamp}.txt"
-        if salvar_resultado(brasileiras_unicas, nome_br):
-            print(f"✅ Arquivo brasileiro consolidado: {nome_br}")
+        if salvar_com_progresso(brasileiras_unicas, nome_br):
+            print(f"✅ Arquivo brasileiro consolidado salvo!")
 
     if not credenciais_unicas:
         print("\n❌ Nenhuma credencial válida encontrada em nenhum arquivo!")
